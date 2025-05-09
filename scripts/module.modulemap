@@ -1,0 +1,8 @@
+module libarchive {
+    header "archive_entry.h"
+    header "archive.h"
+    export *
+    link "iconv"
+    link "xml2"
+    link "pthread"
+}

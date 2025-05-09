@@ -1,0 +1,13 @@
+diff --git a/build-aux/config.sub b/build-aux/config.sub
+index d74fb6de..86196a58 100755
+--- a/build-aux/config.sub
++++ b/build-aux/config.sub
+@@ -1121,7 +1121,7 @@ case $cpu-$vendor in
+ 	xscale-* | xscalee[bl]-*)
+ 		cpu=`echo "$cpu" | sed 's/^xscale/arm/'`
+ 		;;
+-	arm64-* | aarch64le-*)
++	arm64-* | arm64e-* | arm64_32-*)
+ 		cpu=aarch64
+ 		;;
+ 
