@@ -1,0 +1,158 @@
+LIBARCHIVE_TAG := v3.7.9
+LIBARCHIVE_GIT := https://github.com/libarchive/libarchive.git
+
+ZLIB_TAG := v1.3.1
+ZLIB_GIT := https://github.com/madler/zlib
+
+BZIP2_TAG := bzip2-1.0.8
+BZIP2_GIT := https://sourceware.org/git/bzip2.git
+
+XZ_TAG := v5.8.1
+XZ_GIT := https://git.tukaani.org/xz.git
+
+ZSTD_TAG := v1.5.7
+ZSTD_GIT := https://github.com/facebook/zstd.git
+
+LIBZ4_TAG := v1.10.0
+LIBZ4_GIT := https://github.com/lz4/lz4
+
+ZLIB_CFLAGS = -I../zlib
+ZLIB_LDFLAGS = -L../zlib -lz
+BZIP2_CFLAGS = -I../bzip2
+BZIP2_LDFLAGS = -L../bzip2 -lbz2
+XZ_CFLAGS = -I../xz/src/liblzma/api
+XZ_LDFLAGS = -L../xz/src/liblzma/.libs -llzma
+ZSTD_CFLAGS = -I../zstd/lib
+ZSTD_LDFLAGS = -L../zstd/lib -lzstd
+LIBZ4_CFLAGS = -I../libz4/lib
+LIBZ4_LDFLAGS = -L../libz4/lib -llz4
+
+# Enable deterministic builds by zeroing timestamps
+export ZERO_AR_DATE=1
+
+DEPS_CFLAGS = $(ZLIB_CFLAGS) $(XZ_CFLAGS) $(BZIP2_CFLAGS) $(ZSTD_CFLAGS) $(LIBZ4_CFLAGS)
+DEPS_LDFLAGS = $(ZLIB_LDFLAGS) $(XZ_LDFLAGS) $(BZIP2_LDFLAGS) $(ZSTD_LDFLAGS) $(LIBZ4_LDFLAGS)
+
+ARCH ?= 
+TARGET ?=
+
+# Add path relativization for deterministic builds
+REPO_ROOT := $(shell pwd)
+EXTRA_CFLAGS ?= -fdebug-prefix-map=$(REPO_ROOT)=.
+EXTRA_LDFLAGS ?= -Wl,-oso_prefix,$(REPO_ROOT)/
+
+libarchive:
+	git clone $(LIBARCHIVE_GIT) $@ && \
+	cd $@ && \
+	git checkout $(LIBARCHIVE_TAG)
+
+xz:
+	git clone $(XZ_GIT) $@ && \
+	cd $@ && \
+	git checkout $(XZ_TAG)
+
+zlib:
+	git clone $(ZLIB_GIT) $@ && \
+	cd $@ && \
+	git checkout $(ZLIB_TAG)
+
+bzip2:
+	git clone $(BZIP2_GIT) $@ && \
+	cd $@ && \
+	git checkout $(BZIP2_TAG)
+
+zstd:
+	git clone $(ZSTD_GIT) $@ && \
+	cd $@ && \
+	git checkout $(ZSTD_TAG)
+
+libz4:
+	git clone $(LIBZ4_GIT) $@ && \
+	cd $@ && \
+	git checkout $(LIBZ4_TAG)
+
+build: libarchive xz zlib bzip2 zstd libz4
+
+	cd zlib && \
+	git reset --hard && \
+	git clean -xdf && \
+	CC="clang" \
+	CPP="clang -E" \
+	CFLAGS="-O2 -g $(EXTRA_CFLAGS)" \
+	LDFLAGS="$(EXTRA_LDFLAGS)" \
+	./configure --static && \
+	make -j$(shell sysctl -n hw.ncpu)
+
+	cd bzip2 && \
+	git reset --hard && \
+	git clean -xdf && \
+	clang -O2 -g $(EXTRA_CFLAGS) -c blocksort.c huffman.c crctable.c \
+	                                randtable.c compress.c decompress.c bzlib.c && \
+	libtool -D -static -o libbz2.a blocksort.o huffman.o crctable.o \
+	                            randtable.o compress.o decompress.o bzlib.o
+
+	cd xz && \
+	git reset --hard && \
+	git clean -xdf && \
+	./autogen.sh --no-po4a --no-doxygen && \
+	git apply ../patches/0003-xz-apple-support.patch && \
+	CC="clang" \
+	CPP="clang -E" \
+	CFLAGS="-O2 -g $(EXTRA_CFLAGS)" \
+	LDFLAGS="$(EXTRA_LDFLAGS)" \
+	./configure --host=$(ARCH)-apple-darwin --enable-static --disable-shared \
+	--disable-xz --disable-xzdec --disable-lzmadec --disable-lzmainfo --disable-lzma-links && \
+	make -j$(shell sysctl -n hw.ncpu)
+
+	cd zstd && \
+	git reset --hard && \
+	git clean -xdf && \
+	cd lib && \
+	CC="clang" \
+	CPP="clang -E" \
+	CFLAGS="-O2 -g $(EXTRA_CFLAGS)" \
+	LDFLAGS="$(EXTRA_LDFLAGS)" \
+	make libzstd.a-mt -j$(shell sysctl -n hw.ncpu)
+
+	cd libz4 && \
+	git reset --hard && \
+	git clean -xdf && \
+	CC="clang" \
+	CPP="clang -E" \
+	CFLAGS="-O2 -g $(EXTRA_CFLAGS)" \
+	LDFLAGS="$(EXTRA_LDFLAGS)" \
+	make -j$(shell sysctl -n hw.ncpu) 
+	
+	cd libarchive && \
+	git reset --hard && \
+	git clean -xdf && \
+	/bin/sh build/autogen.sh && \
+	git apply ../patches/0002-libarchive-apple-support.patch
+
+	cd libarchive && \
+	CC="clang" \
+	CPP="clang -E" \
+	CFLAGS="-O2 -g $(DEPS_CFLAGS) $(EXTRA_CFLAGS)" \
+	LDFLAGS="$(DEPS_LDFLAGS) $(EXTRA_LDFLAGS)" \
+	./configure --host=$(ARCH)-apple-darwin --enable-static --disable-shared \
+	--disable-bsdunzip  --disable-bsdcpio --disable-bsdcat --disable-bsdtar && \
+	make -j$(shell sysctl -n hw.ncpu)
+
+	DESTDIR="$(shell pwd)/$(TARGET)" make -C libarchive install
+
+	cp module.modulemap $(TARGET)/usr/local/include/
+
+	xcrun libtool -D -static -o tmp.a \
+		$(TARGET)/usr/local/lib/libarchive.a \
+		zlib/libz.a \
+		bzip2/libbz2.a \
+		xz/src/liblzma/.libs/liblzma.a \
+		zstd/lib/libzstd.a \
+		libz4/lib/liblz4.a
+
+	mv tmp.a $(TARGET)/usr/local/lib/libarchive.a
+
+clean: 
+	rm -rf libarchive xz zlib bzip2 zstd libz4
+
+.PHONY: all clean

@@ -1,0 +1,46 @@
+diff --git a/build/autoconf/config.sub b/build/autoconf/config.sub
+index d74fb6de..86196a58 100755
+--- a/build/autoconf/config.sub
++++ b/build/autoconf/config.sub
+@@ -1121,7 +1121,7 @@ case $cpu-$vendor in
+ 	xscale-* | xscalee[bl]-*)
+ 		cpu=`echo "$cpu" | sed 's/^xscale/arm/'`
+ 		;;
+-	arm64-* | aarch64le-*)
++	arm64-* | arm64e-* | arm64_32-*)
+ 		cpu=aarch64
+ 		;;
+ 
+diff --git a/libarchive/filter_fork_posix.c b/libarchive/filter_fork_posix.c
+index 62085a70..f6e157fe 100644
+--- a/libarchive/filter_fork_posix.c
++++ b/libarchive/filter_fork_posix.c
+@@ -26,6 +26,10 @@
+ 
+ #include "archive_platform.h"
+ 
++#if defined(__APPLE__)
++	#include <TargetConditionals.h>
++#endif
++
+ /* This capability is only available on POSIX systems. */
+ #if defined(HAVE_PIPE) && defined(HAVE_FCNTL) && \
+     (defined(HAVE_FORK) || defined(HAVE_VFORK) || defined(HAVE_POSIX_SPAWNP))
+@@ -76,6 +80,9 @@ int
+ __archive_create_child(const char *cmd, int *child_stdin, int *child_stdout,
+ 		pid_t *out_child)
+ {
++#if defined(__APPLE__) && TARGET_OS_OSX == 0
++	return ARCHIVE_FAILED;
++#else
+ 	pid_t child = -1;
+ 	int stdin_pipe[2], stdout_pipe[2], tmp;
+ #if HAVE_POSIX_SPAWNP
+@@ -195,6 +202,7 @@ stdin_opened:
+ state_allocated:
+ 	__archive_cmdline_free(cmdline);
+ 	return ARCHIVE_FAILED;
++#endif /* defined(__APPLE__) && TARGET_OS_OSX == 0 */
+ }
+ 
+ void
