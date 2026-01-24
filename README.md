@@ -9,7 +9,7 @@ A Swift Package Manager distribution of [libarchive](https://libarchive.org/) fo
 
 - **Platform Support**: This package provides libarchive for a wide range of Apple devices:
   - **macOS**: >= 13.0 (`arm64` and `x86_64`)
-  - **iOS**: >= 16 (`arm64`, `arm64e` for device - `arm64` and `x86_64` for simulator)
+  - **iOS**: >= 16 (`arm64` for device - `arm64` and `x86_64` for simulator)
   - **watchOS**: >= 9.0 (`arm64` and `arm64_32` for device - `arm64` and `x86_64` for simulator)
   - **tvOS**: >= 16.0 (`arm64` for device | `arm64` and `x86_64` for simulator)
 
@@ -97,8 +97,7 @@ To build the libarchive.xcframework, you need:
 
 2. **Build Process**:
    ```bash
-   cd scripts
-   make -j1
+   make -j
    ```
 
 This will compile libarchive and all its dependencies for various Apple platforms and package them into a single XCFramework that can be used with Swift Package Manager.
@@ -107,7 +106,7 @@ This will compile libarchive and all its dependencies for various Apple platform
 
 ### Platform-Specific Limitations
 
-This package includes custom patches to ensure compatibility across all Apple platforms. One significant patch (`scripts/patches/0002-libarchive-apple-support.patch`) addresses a fundamental limitation with iOS, watchOS, and tvOS:
+This package includes custom patches to ensure compatibility across all Apple platforms. One significant patch (`patches/0002-libarchive-apple-support.patch`) addresses a fundamental limitation with iOS, watchOS, and tvOS:
 
 **External Process Spawning Restriction**
 
