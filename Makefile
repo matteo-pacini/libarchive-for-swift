@@ -10,22 +10,23 @@
 # =============================================================================
 
 # === Platform Minimum Versions ===
-IOS_MIN_VERSION     := 16.0
-MACOS_MIN_VERSION   := 13.0
-WATCHOS_MIN_VERSION := 9.0
-TVOS_MIN_VERSION    := 16.0
+IOS_MIN_VERSION         := 15.0
+MACOS_MIN_VERSION       := 12.0
+WATCHOS_MIN_VERSION     := 9.0
+TVOS_MIN_VERSION        := 15.0
+MACCATALYST_MIN_VERSION := 15.0
 
 # === Git Sources ===
-LIBARCHIVE_TAG := v3.7.9
+LIBARCHIVE_TAG := v3.8.7
 LIBARCHIVE_GIT := https://github.com/libarchive/libarchive.git
 
-ZLIB_TAG := v1.3.1
+ZLIB_TAG := v1.3.2
 ZLIB_GIT := https://github.com/madler/zlib
 
 BZIP2_TAG := bzip2-1.0.8
 BZIP2_GIT := https://sourceware.org/git/bzip2.git
 
-XZ_TAG := v5.8.1
+XZ_TAG := v5.8.3
 XZ_GIT := https://git.tukaani.org/xz.git
 
 ZSTD_TAG := v1.5.7
@@ -117,6 +118,9 @@ define build-arch
 	$(eval SRC := $(1)/src)
 	$(eval ARCH_CFLAGS := -fdebug-prefix-map=$(REPO_ROOT)=. $(3))
 	$(eval ARCH_LDFLAGS := -Wl,-oso_prefix,$(REPO_ROOT)/ $(4))
+	# config.sub doesn't recognize arm64_32/arm64e; canonicalize the configure
+	# --host to aarch64 while -arch (in CFLAGS) selects the real slice.
+	$(eval CONFIG_HOST := $(if $(filter arm64_32 arm64e,$(2)),aarch64,$(2)))
 
 	# Copy sources to target-specific directory
 	mkdir -p $(SRC)
@@ -152,12 +156,11 @@ define build-arch
 	git reset --hard && \
 	git clean -xdf && \
 	./autogen.sh --no-po4a --no-doxygen && \
-	git apply $(REPO_ROOT)/patches/0003-xz-apple-support.patch && \
 	CC="clang" \
 	CPP="clang -E" \
 	CFLAGS="-O2 -g $(ARCH_CFLAGS)" \
 	LDFLAGS="$(ARCH_LDFLAGS)" \
-	./configure --host=$(2)-apple-darwin --enable-static --disable-shared \
+	./configure --host=$(CONFIG_HOST)-apple-darwin --enable-static --disable-shared \
 	--disable-xz --disable-xzdec --disable-lzmadec --disable-lzmainfo --disable-lzma-links && \
 	make -j$(NPROC)
 
@@ -194,14 +197,14 @@ define build-arch
 	CPP="clang -E" \
 	CFLAGS="-O2 -g $(DEPS_CFLAGS) $(ARCH_CFLAGS)" \
 	LDFLAGS="$(DEPS_LDFLAGS) $(ARCH_LDFLAGS)" \
-	./configure --host=$(2)-apple-darwin --enable-static --disable-shared \
+	./configure --host=$(CONFIG_HOST)-apple-darwin --enable-static --disable-shared \
 	--disable-bsdunzip --disable-bsdcpio --disable-bsdcat --disable-bsdtar && \
 	make -j$(NPROC)
 
 	DESTDIR="$(REPO_ROOT)/$(1)" make -C $(SRC)/libarchive install
 
 	# Copy module map
-	cp module.modulemap $(1)/usr/local/include/
+	cp support/module.modulemap $(1)/usr/local/include/
 
 	# Merge all static libraries into single archive
 	xcrun libtool -D -static -o $(1)/tmp.a \
@@ -247,6 +250,18 @@ $(BUILD_DIR)/macos.x86_64: | $(BUILD_DIR)/.clone-done
 	$(call build-arch,$@,x86_64,\
 		-arch x86_64 -isysroot $(shell xcrun --sdk macosx --show-sdk-path) -mmacosx-version-min=$(MACOS_MIN_VERSION),\
 		-arch x86_64 -isysroot $(shell xcrun --sdk macosx --show-sdk-path))
+
+# Mac Catalyst (built against the macOS SDK; arch + min are carried by the
+# -macabi target triple, so no -arch / -m...-version-min flags here)
+$(BUILD_DIR)/maccatalyst.arm64: | $(BUILD_DIR)/.clone-done
+	$(call build-arch,$@,arm64,\
+		-target arm64-apple-ios$(MACCATALYST_MIN_VERSION)-macabi -isysroot $(shell xcrun --sdk macosx --show-sdk-path),\
+		-target arm64-apple-ios$(MACCATALYST_MIN_VERSION)-macabi -isysroot $(shell xcrun --sdk macosx --show-sdk-path))
+
+$(BUILD_DIR)/maccatalyst.x86_64: | $(BUILD_DIR)/.clone-done
+	$(call build-arch,$@,x86_64,\
+		-target x86_64-apple-ios$(MACCATALYST_MIN_VERSION)-macabi -isysroot $(shell xcrun --sdk macosx --show-sdk-path),\
+		-target x86_64-apple-ios$(MACCATALYST_MIN_VERSION)-macabi -isysroot $(shell xcrun --sdk macosx --show-sdk-path))
 
 # watchOS Device
 $(BUILD_DIR)/watchos.arm64: | $(BUILD_DIR)/.clone-done
@@ -313,6 +328,14 @@ $(BUILD_DIR)/macos: $(BUILD_DIR)/macos.arm64 $(BUILD_DIR)/macos.x86_64
 		$(BUILD_DIR)/macos.arm64/usr/local/lib/libarchive.a \
 		$(BUILD_DIR)/macos.x86_64/usr/local/lib/libarchive.a
 
+$(BUILD_DIR)/maccatalyst: $(BUILD_DIR)/maccatalyst.arm64 $(BUILD_DIR)/maccatalyst.x86_64
+	mkdir -p $@/usr/local/lib
+	mkdir -p $@/usr/local/include
+	cp -r $(BUILD_DIR)/maccatalyst.arm64/usr/local/include/* $@/usr/local/include/
+	lipo -create -output $@/usr/local/lib/libarchive.a \
+		$(BUILD_DIR)/maccatalyst.arm64/usr/local/lib/libarchive.a \
+		$(BUILD_DIR)/maccatalyst.x86_64/usr/local/lib/libarchive.a
+
 $(BUILD_DIR)/watchos: $(BUILD_DIR)/watchos.arm64 $(BUILD_DIR)/watchos.arm64_32
 	mkdir -p $@/usr/local/lib
 	mkdir -p $@/usr/local/include
@@ -348,7 +371,7 @@ $(BUILD_DIR)/tvossimulator: $(BUILD_DIR)/tvossimulator.arm64 $(BUILD_DIR)/tvossi
 # =============================================================================
 
 libarchive.xcframework: $(BUILD_DIR)/ios $(BUILD_DIR)/iossimulator \
-                        $(BUILD_DIR)/macos \
+                        $(BUILD_DIR)/macos $(BUILD_DIR)/maccatalyst \
                         $(BUILD_DIR)/watchos $(BUILD_DIR)/watchossimulator \
                         $(BUILD_DIR)/tvos $(BUILD_DIR)/tvossimulator
 	rm -rf $@
@@ -359,6 +382,8 @@ libarchive.xcframework: $(BUILD_DIR)/ios $(BUILD_DIR)/iossimulator \
 		-headers $(BUILD_DIR)/iossimulator/usr/local/include \
 		-library $(BUILD_DIR)/macos/usr/local/lib/libarchive.a \
 		-headers $(BUILD_DIR)/macos/usr/local/include \
+		-library $(BUILD_DIR)/maccatalyst/usr/local/lib/libarchive.a \
+		-headers $(BUILD_DIR)/maccatalyst/usr/local/include \
 		-library $(BUILD_DIR)/watchos/usr/local/lib/libarchive.a \
 		-headers $(BUILD_DIR)/watchos/usr/local/include \
 		-library $(BUILD_DIR)/watchossimulator/usr/local/lib/libarchive.a \

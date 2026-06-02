@@ -6,10 +6,11 @@ import PackageDescription
 let package = Package(
     name: "SwiftArchive",
     platforms: [
-        .iOS(.v16),
+        .iOS(.v15),
+        .macCatalyst(.v15),
         .watchOS(.v9),
-        .macOS(.v13),
-        .tvOS(.v16)
+        .macOS(.v12),
+        .tvOS(.v15)
     ],
     products: [
         .library(

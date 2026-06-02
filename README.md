@@ -2,16 +2,17 @@
 
 A Swift Package Manager distribution of [libarchive](https://libarchive.org/) for Apple platforms.
 
-![Supported Platforms](https://img.shields.io/badge/platforms-iOS%2016%20%7C%20macOS%2013%20%7C%20watchOS%209%20%7C%20tvOS%2016-lightgrey)
+![Supported Platforms](https://img.shields.io/badge/platforms-iOS%2015%20%7C%20macCatalyst%2015%20%7C%20macOS%2012%20%7C%20watchOS%209%20%7C%20tvOS%2015-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-brightgreen)
 
 ## 🌟 Features
 
 - **Platform Support**: This package provides libarchive for a wide range of Apple devices:
-  - **macOS**: >= 13.0 (`arm64` and `x86_64`)
-  - **iOS**: >= 16 (`arm64` for device - `arm64` and `x86_64` for simulator)
+  - **macOS**: >= 12.0 (`arm64` and `x86_64`)
+  - **Mac Catalyst**: >= 15.0 (`arm64` and `x86_64`)
+  - **iOS**: >= 15 (`arm64` for device - `arm64` and `x86_64` for simulator)
   - **watchOS**: >= 9.0 (`arm64` and `arm64_32` for device - `arm64` and `x86_64` for simulator)
-  - **tvOS**: >= 16.0 (`arm64` for device | `arm64` and `x86_64` for simulator)
+  - **tvOS**: >= 15.0 (`arm64` for device | `arm64` and `x86_64` for simulator)
 
 - **🛠 Comprehensive Integration**: `libarchive` is packaged as a static XCFramework, meaning it incorporates all necessary symbols for both the primary library and its dependencies.
 
@@ -23,10 +24,10 @@ This package (v1.0.0) includes the following library versions:
 
 | Library | Version | Repository |
 |---------|---------|------------|
-| **libarchive** | v3.7.9 | [https://github.com/libarchive/libarchive](https://github.com/libarchive/libarchive) |
-| **zlib** | v1.3.1 | [https://github.com/madler/zlib](https://github.com/madler/zlib) |
+| **libarchive** | v3.8.7 | [https://github.com/libarchive/libarchive](https://github.com/libarchive/libarchive) |
+| **zlib** | v1.3.2 | [https://github.com/madler/zlib](https://github.com/madler/zlib) |
 | **bzip2** | 1.0.8 | [https://sourceware.org/git/bzip2.git](https://sourceware.org/git/bzip2.git) |
-| **xz** | v5.8.1 | [https://git.tukaani.org/xz.git](https://git.tukaani.org/xz.git) |
+| **xz** | v5.8.3 | [https://git.tukaani.org/xz.git](https://git.tukaani.org/xz.git) |
 | **zstd** | v1.5.7 | [https://github.com/facebook/zstd](https://github.com/facebook/zstd) |
 | **lz4** | v1.10.0 | [https://github.com/lz4/lz4](https://github.com/lz4/lz4) |
 
@@ -110,12 +111,12 @@ This package includes custom patches to ensure compatibility across all Apple pl
 
 **External Process Spawning Restriction**
 
-The original libarchive code uses POSIX functions like `fork()`, `vfork()`, and `posix_spawn()` to create child processes for certain operations (such as when using external programs for compression/decompression). While this works fine on macOS, it presents a significant problem on iOS, watchOS, and tvOS because:
+The original libarchive code uses POSIX functions like `fork()`, `vfork()`, and `posix_spawn()` to create child processes for certain operations (such as when using external programs for compression/decompression). While this works fine on macOS (and Mac Catalyst, which runs as a regular macOS process), it presents a significant problem on iOS, watchOS, and tvOS because:
 
 - These platforms have strict security sandboxing that prevents or severely restricts process spawning
 - Attempting to use these functions could cause runtime crashes or unpredictable behavior
 
-The patch detects when running on a non-macOS Apple platform and gracefully fails these operations rather than attempting to use functionality that would crash the app. This ensures that the library works reliably across all supported platforms, though with some functionality differences between macOS and other Apple platforms.
+The patch detects when running on iOS, watchOS, or tvOS and gracefully fails these operations rather than attempting to use functionality that would crash the app (macOS and Mac Catalyst keep full process-spawning support). This ensures that the library works reliably across all supported platforms, though with some functionality differences between macOS/Mac Catalyst and the sandboxed Apple platforms.
 
 ## 🙌 Contributing
 

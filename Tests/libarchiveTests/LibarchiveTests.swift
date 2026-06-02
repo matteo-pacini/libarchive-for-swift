@@ -7,7 +7,7 @@ final class LibarchiveTests: XCTestCase {
 
         let versionDetail = String(cString: archive_version_details(), encoding: .ascii) ?? "N/A"
 
-        XCTAssertTrue(versionDetail.contains("libarchive 3.7.9"))
+        XCTAssertTrue(versionDetail.contains("libarchive 3.8.7"))
 
     }
 
@@ -15,7 +15,7 @@ final class LibarchiveTests: XCTestCase {
 
         let versionDetail = String(cString: archive_version_details(), encoding: .ascii) ?? "N/A"
 
-        XCTAssertTrue(versionDetail.contains("zlib/1.3"))
+        XCTAssertTrue(versionDetail.contains("zlib/1.3.2"))
 
     }
 
@@ -31,7 +31,7 @@ final class LibarchiveTests: XCTestCase {
 
         let versionDetail = String(cString: archive_version_details(), encoding: .ascii) ?? "N/A"
 
-        XCTAssertTrue(versionDetail.contains("liblzma/5.8.1"))
+        XCTAssertTrue(versionDetail.contains("liblzma/5.8.3"))
 
     }
 
