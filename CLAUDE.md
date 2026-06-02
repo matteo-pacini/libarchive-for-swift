@@ -18,7 +18,7 @@ swift test
 ```
 
 ### Build the XCFramework from Source
-Requires Xcode 16.3+ and Nix development environment.
+Requires Xcode 26.5 (the pinned, supported version) and the Nix development environment.
 ```bash
 # Enter Nix environment first
 nix develop path:.

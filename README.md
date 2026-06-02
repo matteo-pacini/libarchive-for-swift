@@ -94,7 +94,7 @@ This project uses [Nix](https://nixos.org/) as its primary package manager. Ther
 To build the libarchive.xcframework, you need:
 
 1. **Prerequisites**:
-   - Xcode 16.3 or later installed on your system
+   - Xcode 26.5 — this is the version the project is developed and tested against, and whose SDKs the build pins its deployment targets and architecture slices to. Other versions are not supported.
 
 2. **Build Process**:
    ```bash
