@@ -13,8 +13,10 @@ This is a Swift Package Manager distribution of [libarchive](https://libarchive.
 ## Common Commands
 
 ### Run Tests
+Released tags resolve `libarchive` as a remote `binaryTarget`. To test against a
+locally built `libarchive.xcframework` (after `make -j`), set `LIBARCHIVE_LOCAL`:
 ```bash
-swift test
+LIBARCHIVE_LOCAL=1 swift test
 ```
 
 ### Build the XCFramework from Source

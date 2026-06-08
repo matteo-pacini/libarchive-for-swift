@@ -155,6 +155,14 @@ To build the libarchive.xcframework, you need:
 
 This will compile libarchive and all its dependencies for various Apple platforms and package them into a single XCFramework that can be used with Swift Package Manager.
 
+Released tags resolve `libarchive` as a remote `binaryTarget` (downloaded from the GitHub release). To build or test against the XCFramework you just compiled locally, set `LIBARCHIVE_LOCAL`:
+
+```bash
+LIBARCHIVE_LOCAL=1 swift test
+```
+
+Releases are produced by CI (`.github/workflows/release.yml`): bumping the root `VERSION` file and pushing to `master` builds the XCFramework, writes its checksum into `Package.swift`, tags the version, and publishes the zip as a GitHub release asset.
+
 ## ⚠️ Known Issues
 
 ### Platform-Specific Limitations

@@ -1,0 +1,197 @@
+name: Release
+
+# Builds the libarchive XCFramework and publishes it as a GitHub release asset.
+# Build, checksum, manifest stamp, commit, tag, and release all run in one
+# checkout on one runner, so the bytes that are checksummed are the bytes
+# published.
+on:
+  push:
+    branches: [master]
+    paths: ['VERSION']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build + checksum + validate, but do not commit, tag, or publish'
+        type: boolean
+        default: false
+
+# Serialize releases. Cancelling mid-run could strand a pushed tag with no asset.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: we push the release commit + tag, and the version
+          # check below reads HEAD^.
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: v
+        run: |
+          set -euo pipefail
+          read -r version < VERSION
+          version="${version//[[:space:]]/}"
+          [ -n "$version" ] || { echo "::error::VERSION file is empty"; exit 1; }
+
+          printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)*$' \
+            || { echo "::error::'$version' is not semver"; exit 1; }
+
+          # On push, only release when VERSION changed vs the parent. This also
+          # stops the bot's own release commit from re-triggering the workflow.
+          # A manual workflow_dispatch always proceeds.
+          if [ "${{ github.event_name }}" = "push" ]; then
+            parent="$(git show HEAD^:VERSION 2>/dev/null || true)"
+            parent="${parent//[[:space:]]/}"
+            if [ "$version" = "$parent" ]; then
+              echo "VERSION unchanged ($version) - nothing to release."
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          # Refuse to clobber an existing release/tag at this version.
+          if gh release view "$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $version already exists"; exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$version" >/dev/null 2>&1; then
+            echo "::error::Tag $version already exists on origin"; exit 1
+          fi
+
+          echo "release=true"      >> "$GITHUB_OUTPUT"
+          echo "version=$version"  >> "$GITHUB_OUTPUT"
+          {
+            echo "## Release $version"
+            echo "- event: \`${{ github.event_name }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The Makefile's determinism flags are tuned to Xcode 26.5; a floating
+      # Xcode would change the built bytes (and the checksum). Bump in lockstep
+      # with the Makefile.
+      - if: steps.v.outputs.release == 'true'
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.5'
+
+      # Fail fast if the image lost the visionOS SDK before the long build.
+      - if: steps.v.outputs.release == 'true'
+        name: Verify visionOS SDK is present
+        run: xcrun --sdk xros --show-sdk-path
+
+      # nix > 2.13 auto-enables nix-command + flakes, so `nix develop` needs no
+      # extra nix.conf.
+      - if: steps.v.outputs.release == 'true'
+        uses: nixbuild/nix-quick-install-action@v34
+
+      # Cache the make build tree. Upstream dependency tags are literals in the
+      # Makefile, so hashing Makefile + patches + flake.lock busts the key on any
+      # bump; the Xcode pin is in the key since the determinism flags depend on
+      # it. A stale cache can't ship: the checksum and verify steps are computed
+      # from the actual built bytes.
+      - if: steps.v.outputs.release == 'true'
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: make-build-${{ runner.os }}-xcode26.5-${{ hashFiles('Makefile', 'patches/**', 'flake.lock') }}
+
+      - name: Build, package, checksum
+        if: steps.v.outputs.release == 'true'
+        id: build
+        run: |
+          set -euo pipefail
+          nix develop path:. --command make -j"$(sysctl -n hw.ncpu)"
+          test -d libarchive.xcframework || { echo "::error::libarchive.xcframework not produced"; exit 1; }
+          # --keepParent puts libarchive.xcframework/ at the zip root, as
+          # binaryTarget(url:) expects.
+          ditto -c -k --keepParent libarchive.xcframework libarchive.xcframework.zip
+          sum="$(swift package compute-checksum libarchive.xcframework.zip)"
+          echo "checksum=$sum" >> "$GITHUB_OUTPUT"
+          echo "checksum \`$sum\`" >> "$GITHUB_STEP_SUMMARY"
+
+      # Rewrite the two manifest constants, failing unless each matches exactly
+      # once. Until this commit lands, master HEAD carries the placeholder
+      # checksum: consumers must pin a release tag, not the branch.
+      - name: Stamp manifest
+        if: steps.v.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          CHECKSUM: ${{ steps.build.outputs.checksum }}
+        run: |
+          set -euo pipefail
+          python3 - "$VERSION" "$CHECKSUM" <<'PY'
+          import re, sys, pathlib
+          version, checksum = sys.argv[1], sys.argv[2]
+          if not re.fullmatch(r"[0-9a-f]{64}", checksum):
+              sys.exit(f"refusing to stamp non-sha256 checksum: {checksum!r}")
+          path = pathlib.Path("Package.swift")
+          text = path.read_text()
+          def sub(pattern, repl, label, src):
+              out, n = re.subn(pattern, repl, src, count=1)
+              if n != 1:
+                  sys.exit(f"expected exactly 1 match for {label}, found {n}")
+              return out
+          text = sub(r'let packageVersion = "[^"]*"',
+                     f'let packageVersion = "{version}"', "packageVersion", text)
+          text = sub(r'let cArchiveChecksum = "[0-9a-f]{64}"',
+                     f'let cArchiveChecksum = "{checksum}"', "cArchiveChecksum", text)
+          path.write_text(text)
+          print(f'stamped packageVersion = "{version}"')
+          print(f'stamped cArchiveChecksum = "{checksum}"')
+          PY
+
+      # Parses the manifest (does not fetch the binary); catches a broken rewrite
+      # before we tag.
+      - name: Validate manifest parses
+        if: steps.v.outputs.release == 'true'
+        run: swift package describe > /dev/null
+
+      - name: Commit, tag, and publish
+        if: steps.v.outputs.release == 'true' && !inputs.dry_run
+        id: publish
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Package.swift
+          git commit -m "Release $VERSION"
+          git tag -a "$VERSION" -m "libarchive-for-swift $VERSION"
+          # Atomic push so the branch update can't land without its tag.
+          git push --atomic origin HEAD:master "refs/tags/$VERSION"
+          sha="$(git rev-parse HEAD)"
+          # Pin the release to the bot commit and attach the exact zip we
+          # checksummed.
+          gh release create "$VERSION" libarchive.xcframework.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$sha" \
+            --title "$VERSION" \
+            --generate-notes
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      # Re-download the published asset and confirm it hashes to the checksum
+      # committed to Package.swift.
+      - name: Verify published asset
+        if: steps.v.outputs.release == 'true' && !inputs.dry_run
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          EXPECTED: ${{ steps.build.outputs.checksum }}
+        run: |
+          set -euo pipefail
+          gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" \
+            --pattern libarchive.xcframework.zip --dir verify
+          actual="$(swift package compute-checksum verify/libarchive.xcframework.zip)"
+          if [ "$actual" != "$EXPECTED" ]; then
+            echo "::error::Published asset checksum ($actual) != committed ($EXPECTED) for tag $VERSION"
+            exit 1
+          fi
+          echo "Release $VERSION verified: published asset matches committed checksum." >> "$GITHUB_STEP_SUMMARY"

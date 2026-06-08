@@ -2,6 +2,23 @@
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
+import Foundation
+
+let packageVersion = "1.0.0"
+let cArchiveChecksum = "0000000000000000000000000000000000000000000000000000000000000000"
+
+// Contributors building from source (`make -j`) set LIBARCHIVE_LOCAL=1 to use the
+// freshly built libarchive.xcframework; released tags resolve the remote binary.
+let libarchiveTarget: Target = ProcessInfo.processInfo.environment["LIBARCHIVE_LOCAL"] != nil
+    ? .binaryTarget(
+        name: "libarchive",
+        path: "libarchive.xcframework"
+    )
+    : .binaryTarget(
+        name: "libarchive",
+        url: "https://github.com/matteo-pacini/libarchive-for-swift/releases/download/\(packageVersion)/libarchive.xcframework.zip",
+        checksum: cArchiveChecksum
+    )
 
 let package = Package(
     name: "SwiftArchive",
@@ -22,10 +39,7 @@ let package = Package(
             targets: ["SwiftArchive"]),
     ],
     targets: [
-        .binaryTarget(
-            name: "libarchive",
-            path: "libarchive.xcframework"
-        ),
+        libarchiveTarget,
         .target(
             name: "SwiftArchive",
             dependencies: ["libarchive"]
