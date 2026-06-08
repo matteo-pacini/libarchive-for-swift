@@ -16,15 +16,27 @@ let package = Package(
         .library(
             name: "libarchive",
             targets: ["libarchive"]),
+        .library(
+            name: "SwiftArchive",
+            targets: ["SwiftArchive"]),
     ],
     targets: [
         .binaryTarget(
             name: "libarchive",
             path: "libarchive.xcframework"
         ),
+        .target(
+            name: "SwiftArchive",
+            dependencies: ["libarchive"]
+        ),
         .testTarget(
             name: "libarchiveTests",
             dependencies: ["libarchive"]
         ),
-    ]
+        .testTarget(
+            name: "SwiftArchiveTests",
+            dependencies: ["SwiftArchive"]
+        ),
+    ],
+    swiftLanguageModes: [.v6]
 )

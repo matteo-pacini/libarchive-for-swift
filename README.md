@@ -54,9 +54,60 @@ Then, add the dependency to your target:
 )
 ```
 
-## 💡 Usage
+## 🧩 SwiftArchive (high-level Swift API)
 
-This package provides direct access to the C API of libarchive. You'll need to use the C API directly in your Swift code.
+The package also ships a `SwiftArchive` library: a thin, type-safe, async/await wrapper over libarchive. Add the product to your target:
+
+```swift
+.product(name: "SwiftArchive", package: "libarchive-for-swift")
+```
+
+```swift
+import SwiftArchive
+```
+
+### Read an archive
+
+```swift
+let entries = try await Archive.read(from: .fileURL(archiveURL))
+for item in entries {
+    print(item.entry.path, item.bytes.count)
+}
+```
+
+### Stream a large archive
+
+```swift
+let reader = try await ArchiveReader(reading: .fileURL(archiveURL))
+for try await item in reader {
+    print(item.entry.path, item.bytes.count)
+}
+await reader.close()
+```
+
+### Create an archive
+
+```swift
+let entries: [EntryDraft] = [
+    .directory("docs/"),
+    .file("docs/readme.txt", text: "hello"),
+    .file("docs/data.bin", bytes: [0x00, 0x01, 0x02])
+]
+
+// In memory:
+let data = try await Archive.write(entries, format: .pax, filter: .gzip)
+
+// To a file:
+try await Archive.write(entries, format: .ustar, filter: .zstd, to: outputURL)
+```
+
+Reading auto-detects the format and filter. For self-compressing containers (`.zip`, `.sevenZip`) use `filter: .none`. Format and filter selectors that have no dedicated static member can be resolved by libarchive name with `ArchiveFormat.named(_:)` and `ArchiveFilter.named(_:)`.
+
+> Note: external program filters (`ArchiveFilter.program(_:)`) are available on macOS and Mac Catalyst only.
+
+## 🔩 Low-level C API
+
+For full control, the package also exposes the raw libarchive C API directly. You can use the C API directly in your Swift code.
 
 ### Importing in Swift
 
@@ -94,7 +145,7 @@ This project uses [Nix](https://nixos.org/) as its primary package manager. Ther
 To build the libarchive.xcframework, you need:
 
 1. **Prerequisites**:
-   - Xcode 26.5 — this is the version the project is developed and tested against, and whose SDKs the build pins its deployment targets and architecture slices to. Other versions are not supported.
+   - Xcode 26.5 - this is the version the project is developed and tested against, and whose SDKs the build pins its deployment targets and architecture slices to. Other versions are not supported.
 
 2. **Build Process**:
    ```bash
