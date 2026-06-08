@@ -5,7 +5,7 @@ import PackageDescription
 import Foundation
 
 let packageVersion = "1.0.0"
-let cArchiveChecksum = "0000000000000000000000000000000000000000000000000000000000000000"
+let cArchiveChecksum = "69d02b4cb401e84e880589b42688a3796ed6902d14ec010e47654f7355f73024"
 
 // Contributors building from source (`make -j`) set LIBARCHIVE_LOCAL=1 to use the
 // freshly built libarchive.xcframework; released tags resolve the remote binary.
