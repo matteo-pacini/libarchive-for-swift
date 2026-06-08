@@ -2,7 +2,7 @@
 
 A Swift Package Manager distribution of [libarchive](https://libarchive.org/) for Apple platforms.
 
-![Supported Platforms](https://img.shields.io/badge/platforms-iOS%2015%20%7C%20macCatalyst%2015%20%7C%20macOS%2012%20%7C%20watchOS%209%20%7C%20tvOS%2015-lightgrey)
+![Supported Platforms](https://img.shields.io/badge/platforms-iOS%2015%20%7C%20macCatalyst%2015%20%7C%20macOS%2012%20%7C%20watchOS%209%20%7C%20tvOS%2015%20%7C%20visionOS%201-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-brightgreen)
 
 ## 🌟 Features
@@ -13,6 +13,7 @@ A Swift Package Manager distribution of [libarchive](https://libarchive.org/) fo
   - **iOS**: >= 15 (`arm64` for device - `arm64` and `x86_64` for simulator)
   - **watchOS**: >= 9.0 (`arm64` and `arm64_32` for device - `arm64` and `x86_64` for simulator)
   - **tvOS**: >= 15.0 (`arm64` for device | `arm64` and `x86_64` for simulator)
+  - **visionOS**: >= 1.0 (`arm64` for device | `arm64` and `x86_64` for simulator)
 
 - **🛠 Comprehensive Integration**: `libarchive` is packaged as a static XCFramework, meaning it incorporates all necessary symbols for both the primary library and its dependencies.
 
@@ -158,16 +159,16 @@ This will compile libarchive and all its dependencies for various Apple platform
 
 ### Platform-Specific Limitations
 
-This package includes custom patches to ensure compatibility across all Apple platforms. One significant patch (`patches/0002-libarchive-apple-support.patch`) addresses a fundamental limitation with iOS, watchOS, and tvOS:
+This package includes custom patches to ensure compatibility across all Apple platforms. One significant patch (`patches/0002-libarchive-apple-support.patch`) addresses a fundamental limitation with iOS, watchOS, tvOS, and visionOS:
 
 **External Process Spawning Restriction**
 
-The original libarchive code uses POSIX functions like `fork()`, `vfork()`, and `posix_spawn()` to create child processes for certain operations (such as when using external programs for compression/decompression). While this works fine on macOS (and Mac Catalyst, which runs as a regular macOS process), it presents a significant problem on iOS, watchOS, and tvOS because:
+The original libarchive code uses POSIX functions like `fork()`, `vfork()`, and `posix_spawn()` to create child processes for certain operations (such as when using external programs for compression/decompression). While this works fine on macOS (and Mac Catalyst, which runs as a regular macOS process), it presents a significant problem on iOS, watchOS, tvOS, and visionOS because:
 
 - These platforms have strict security sandboxing that prevents or severely restricts process spawning
 - Attempting to use these functions could cause runtime crashes or unpredictable behavior
 
-The patch detects when running on iOS, watchOS, or tvOS and gracefully fails these operations rather than attempting to use functionality that would crash the app (macOS and Mac Catalyst keep full process-spawning support). This ensures that the library works reliably across all supported platforms, though with some functionality differences between macOS/Mac Catalyst and the sandboxed Apple platforms.
+The patch detects when running on iOS, watchOS, tvOS, or visionOS and gracefully fails these operations rather than attempting to use functionality that would crash the app (macOS and Mac Catalyst keep full process-spawning support). This ensures that the library works reliably across all supported platforms, though with some functionality differences between macOS/Mac Catalyst and the sandboxed Apple platforms.
 
 ## 🙌 Contributing
 

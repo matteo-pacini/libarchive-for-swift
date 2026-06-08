@@ -15,6 +15,7 @@ MACOS_MIN_VERSION       := 12.0
 WATCHOS_MIN_VERSION     := 9.0
 TVOS_MIN_VERSION        := 15.0
 MACCATALYST_MIN_VERSION := 15.0
+VISIONOS_MIN_VERSION    := 1.0
 
 # === Git Sources ===
 LIBARCHIVE_TAG := v3.8.7
@@ -302,6 +303,23 @@ $(BUILD_DIR)/tvossimulator.x86_64: | $(BUILD_DIR)/.clone-done
 		-arch x86_64 -isysroot $(shell xcrun --sdk appletvsimulator --show-sdk-path) -mtvos-simulator-version-min=$(TVOS_MIN_VERSION),\
 		-arch x86_64 -isysroot $(shell xcrun --sdk appletvsimulator --show-sdk-path))
 
+# visionOS Device (arch + min carried by the -xros target triple)
+$(BUILD_DIR)/visionos.arm64: | $(BUILD_DIR)/.clone-done
+	$(call build-arch,$@,arm64,\
+		-target arm64-apple-xros$(VISIONOS_MIN_VERSION) -isysroot $(shell xcrun --sdk xros --show-sdk-path),\
+		-target arm64-apple-xros$(VISIONOS_MIN_VERSION) -isysroot $(shell xcrun --sdk xros --show-sdk-path))
+
+# visionOS Simulator
+$(BUILD_DIR)/visionossimulator.arm64: | $(BUILD_DIR)/.clone-done
+	$(call build-arch,$@,arm64,\
+		-target arm64-apple-xros$(VISIONOS_MIN_VERSION)-simulator -isysroot $(shell xcrun --sdk xrsimulator --show-sdk-path),\
+		-target arm64-apple-xros$(VISIONOS_MIN_VERSION)-simulator -isysroot $(shell xcrun --sdk xrsimulator --show-sdk-path))
+
+$(BUILD_DIR)/visionossimulator.x86_64: | $(BUILD_DIR)/.clone-done
+	$(call build-arch,$@,x86_64,\
+		-target x86_64-apple-xros$(VISIONOS_MIN_VERSION)-simulator -isysroot $(shell xcrun --sdk xrsimulator --show-sdk-path),\
+		-target x86_64-apple-xros$(VISIONOS_MIN_VERSION)-simulator -isysroot $(shell xcrun --sdk xrsimulator --show-sdk-path))
+
 # =============================================================================
 # Platform Combination Targets (lipo)
 # =============================================================================
@@ -366,6 +384,20 @@ $(BUILD_DIR)/tvossimulator: $(BUILD_DIR)/tvossimulator.arm64 $(BUILD_DIR)/tvossi
 		$(BUILD_DIR)/tvossimulator.arm64/usr/local/lib/libarchive.a \
 		$(BUILD_DIR)/tvossimulator.x86_64/usr/local/lib/libarchive.a
 
+$(BUILD_DIR)/visionos: $(BUILD_DIR)/visionos.arm64
+	mkdir -p $@/usr/local/lib
+	mkdir -p $@/usr/local/include
+	cp -r $(BUILD_DIR)/visionos.arm64/usr/local/include/* $@/usr/local/include/
+	cp $(BUILD_DIR)/visionos.arm64/usr/local/lib/libarchive.a $@/usr/local/lib/libarchive.a
+
+$(BUILD_DIR)/visionossimulator: $(BUILD_DIR)/visionossimulator.arm64 $(BUILD_DIR)/visionossimulator.x86_64
+	mkdir -p $@/usr/local/lib
+	mkdir -p $@/usr/local/include
+	cp -r $(BUILD_DIR)/visionossimulator.arm64/usr/local/include/* $@/usr/local/include/
+	lipo -create -output $@/usr/local/lib/libarchive.a \
+		$(BUILD_DIR)/visionossimulator.arm64/usr/local/lib/libarchive.a \
+		$(BUILD_DIR)/visionossimulator.x86_64/usr/local/lib/libarchive.a
+
 # =============================================================================
 # XCFramework Creation
 # =============================================================================
@@ -373,7 +405,8 @@ $(BUILD_DIR)/tvossimulator: $(BUILD_DIR)/tvossimulator.arm64 $(BUILD_DIR)/tvossi
 libarchive.xcframework: $(BUILD_DIR)/ios $(BUILD_DIR)/iossimulator \
                         $(BUILD_DIR)/macos $(BUILD_DIR)/maccatalyst \
                         $(BUILD_DIR)/watchos $(BUILD_DIR)/watchossimulator \
-                        $(BUILD_DIR)/tvos $(BUILD_DIR)/tvossimulator
+                        $(BUILD_DIR)/tvos $(BUILD_DIR)/tvossimulator \
+                        $(BUILD_DIR)/visionos $(BUILD_DIR)/visionossimulator
 	rm -rf $@
 	xcodebuild -create-xcframework \
 		-library $(BUILD_DIR)/ios/usr/local/lib/libarchive.a \
@@ -392,6 +425,10 @@ libarchive.xcframework: $(BUILD_DIR)/ios $(BUILD_DIR)/iossimulator \
 		-headers $(BUILD_DIR)/tvos/usr/local/include \
 		-library $(BUILD_DIR)/tvossimulator/usr/local/lib/libarchive.a \
 		-headers $(BUILD_DIR)/tvossimulator/usr/local/include \
+		-library $(BUILD_DIR)/visionos/usr/local/lib/libarchive.a \
+		-headers $(BUILD_DIR)/visionos/usr/local/include \
+		-library $(BUILD_DIR)/visionossimulator/usr/local/lib/libarchive.a \
+		-headers $(BUILD_DIR)/visionossimulator/usr/local/include \
 		-output $@
 
 # =============================================================================

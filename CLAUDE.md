@@ -46,12 +46,13 @@ Build targets cover these platform/architecture combinations:
 - iOS: arm64 (device); arm64, x86_64 (simulator)
 - watchOS: arm64, arm64_32 (device); arm64, x86_64 (simulator)
 - tvOS: arm64 (device); arm64, x86_64 (simulator)
+- visionOS: arm64 (device); arm64, x86_64 (simulator)
 
 ### Patches
 A custom patch in `patches/` handles Apple platform compatibility:
-- `0002-libarchive-apple-support.patch`: Disables process spawning (fork/vfork/posix_spawn) on iOS/watchOS/tvOS since those platforms don't support it
+- `0002-libarchive-apple-support.patch`: Disables process spawning (fork/vfork/posix_spawn) on iOS/watchOS/tvOS/visionOS since those platforms don't support it
 
 The arm64_32/arm64e architectures are canonicalized to an `aarch64` configure `--host` directly in the Makefile (`CONFIG_HOST`), so no `config.sub` patch is required for libarchive or xz.
 
 ### Platform Limitation
-External process spawning via `archive_write_add_filter_program()` only works on macOS and Mac Catalyst (both run as regular macOS processes). iOS, watchOS, and tvOS gracefully fail these operations due to sandbox restrictions.
+External process spawning via `archive_write_add_filter_program()` only works on macOS and Mac Catalyst (both run as regular macOS processes). iOS, watchOS, tvOS, and visionOS gracefully fail these operations due to sandbox restrictions.
