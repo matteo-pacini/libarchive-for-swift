@@ -29,7 +29,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Full history: we push the release commit + tag, and the version
           # check below reads HEAD^.
@@ -98,7 +98,7 @@ jobs:
       # it. A stale cache can't ship: the checksum and verify steps are computed
       # from the actual built bytes.
       - if: steps.v.outputs.release == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: build
           key: make-build-${{ runner.os }}-xcode26.5-${{ hashFiles('Makefile', 'patches/**', 'flake.lock') }}
