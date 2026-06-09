@@ -79,6 +79,13 @@ public actor ArchiveReader: AsyncSequence {
     /// handle is still in libarchive's "new" state.
     private var isOpened = false
 
+    /// `true` once ``nextEntry()`` has returned `nil` at end of archive. libarchive
+    /// does not allow calling `archive_read_next_header` again after it reports EOF;
+    /// a second call aborts the process. Latching here makes `nextEntry()`
+    /// idempotent at EOF — every subsequent call returns `nil` without re-entering
+    /// libarchive.
+    private var reachedEOF = false
+
     /// The path of the entry most recently returned by ``nextEntry()``, used to
     /// label data-read errors. Empty before the first header.
     private var currentEntryPath = ""
@@ -244,7 +251,7 @@ public actor ArchiveReader: AsyncSequence {
     /// - Returns: The next ``ArchiveEntry``, or `nil` at end of archive or on cancellation.
     /// - Throws: ``ArchiveError`` on a fatal read error.
     public func nextEntry() throws -> ArchiveEntry? {
-        guard !isClosed, let handle else { return nil }
+        guard !isClosed, !reachedEOF, let handle else { return nil }
         if Task.isCancelled { return nil }
         try ensureOpened()
 
@@ -260,7 +267,12 @@ public actor ArchiveReader: AsyncSequence {
             }
             return makeSnapshot(from: entryPtr)
         }
-        guard let snapshot else { return nil }
+        // EOF: latch it. libarchive aborts if archive_read_next_header is called
+        // again after reporting EOF, so every later call must short-circuit above.
+        guard let snapshot else {
+            reachedEOF = true
+            return nil
+        }
         currentEntryPath = snapshot.path
         return snapshot
     }
