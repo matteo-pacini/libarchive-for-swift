@@ -260,12 +260,4 @@ public struct EntryDraft: Sendable, Equatable {
     public static func hardlink(_ path: String, target: String) -> EntryDraft {
         EntryDraft(path: path, bytes: [], fileType: .regular, size: 0, hardlinkTarget: target)
     }
-
-    /// Returns a copy with the given permission bits; the original is unchanged.
-    /// - Parameter permissions: The new permission bits.
-    public func withPermissions(_ permissions: UInt16) -> EntryDraft {
-        var copy = self
-        copy.permissions = permissions
-        return copy
-    }
 }

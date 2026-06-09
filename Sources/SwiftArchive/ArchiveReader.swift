@@ -285,7 +285,8 @@ public actor ArchiveReader: AsyncSequence {
     /// - Parameter maxLength: The maximum bytes to read this call (defaults to 64 KiB).
     /// - Returns: The bytes read; an empty array marks the end of this entry's data.
     /// - Throws: ``ArchiveError`` if `archive_read_data` returns a non-usable
-    ///   negative status (``ArchiveStatus/failed`` or ``ArchiveStatus/fatal``).
+    ///   negative status (``ArchiveStatus/retry``, ``ArchiveStatus/failed``, or
+    ///   ``ArchiveStatus/fatal``).
     public func readData(maxLength: Int = 64 * 1024) throws -> [UInt8] {
         guard !isClosed, let handle else { return [] }
         try ensureOpened()
@@ -296,10 +297,10 @@ public actor ArchiveReader: AsyncSequence {
         }
         if n == 0 { return [] }
         if n < 0 {
-            // A negative return is a status code. ``ArchiveStatus/warn`` /
-            // ``ArchiveStatus/retry`` leave the handle usable, so treat them as the
-            // end of this entry's data rather than a hard failure; only the
-            // non-usable codes throw, carrying their real status.
+            // A negative return is a status code. ``ArchiveStatus/warn`` leaves
+            // the handle usable, so treat it as the end of this entry's data
+            // rather than a hard failure; every other negative status throws,
+            // carrying its real status.
             let status = ArchiveStatus(rawCode: Int32(n))
             guard status.isUsable else {
                 throw ArchiveError(stage: .readData(path: currentEntryPath), code: Int32(n), message: errorString(handle))
