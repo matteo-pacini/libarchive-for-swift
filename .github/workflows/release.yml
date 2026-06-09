@@ -1,9 +1,9 @@
 name: Release
 
 # Builds the libarchive XCFramework and publishes it as a GitHub release asset.
-# Build, checksum, manifest stamp, commit, tag, and release all run in one
-# checkout on one runner, so the bytes that are checksummed are the bytes
-# published.
+# Build, checksum, test, manifest stamp, commit, tag, and release all run in one
+# checkout on one runner, so the bytes that are checksummed are the bytes that
+# are tested and published. The release is gated on the test suite passing.
 on:
   push:
     branches: [master]
@@ -116,6 +116,16 @@ jobs:
           sum="$(swift package compute-checksum libarchive.xcframework.zip)"
           echo "checksum=$sum" >> "$GITHUB_OUTPUT"
           echo "checksum \`$sum\`" >> "$GITHUB_STEP_SUMMARY"
+
+      # Gate the release on the suite passing against the JUST-BUILT xcframework.
+      # LIBARCHIVE_LOCAL=1 resolves the local binaryTarget(path:), so the tests
+      # exercise exactly the artifact about to be published. A failure here fails
+      # the job before anything is stamped, committed, tagged, or released.
+      - name: Run test suite against the built xcframework
+        if: steps.v.outputs.release == 'true'
+        env:
+          LIBARCHIVE_LOCAL: '1'
+        run: nix develop path:. --command swift test
 
       # Rewrite the two manifest constants, failing unless each matches exactly
       # once. Until this commit lands, master HEAD carries the placeholder
