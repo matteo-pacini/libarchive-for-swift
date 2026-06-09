@@ -248,13 +248,19 @@ public actor ArchiveReader: AsyncSequence {
         if Task.isCancelled { return nil }
         try ensureOpened()
 
-        var entryPtr: OpaquePointer?
-        let rc = archive_read_next_header(handle, &entryPtr)
-        if rc == ARCHIVE_EOF { return nil }
-        guard rc == ARCHIVE_OK || rc == ARCHIVE_WARN else {
-            throw ArchiveError(stage: .readHeader, code: rc, message: errorString(handle))
+        // Decode under a UTF-8 locale so libarchive's name charset conversion
+        // (and the _utf8 getters inside makeSnapshot) handle non-ASCII names
+        // correctly regardless of the executor thread's ambient locale.
+        let snapshot: ArchiveEntry? = try withUTF8Locale {
+            var entryPtr: OpaquePointer?
+            let rc = archive_read_next_header(handle, &entryPtr)
+            if rc == ARCHIVE_EOF { return nil }
+            guard rc == ARCHIVE_OK || rc == ARCHIVE_WARN else {
+                throw ArchiveError(stage: .readHeader, code: rc, message: errorString(handle))
+            }
+            return makeSnapshot(from: entryPtr)
         }
-        let snapshot = makeSnapshot(from: entryPtr)
+        guard let snapshot else { return nil }
         currentEntryPath = snapshot.path
         return snapshot
     }

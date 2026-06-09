@@ -316,14 +316,19 @@ public actor ArchiveWriter {
     ///   - handle: The open write handle.
     /// - Throws: ``ArchiveError`` if the entry cannot be allocated or the header fails.
     private func writeHeader(_ draft: EntryDraft, handle: OpaquePointer) throws {
-        guard let cEntry = makeCEntry(from: draft) else {
-            throw ArchiveError(stage: .writeHeader(path: draft.path), code: ARCHIVE_FATAL, message: "archive_entry_new returned nil")
-        }
-        defer { archive_entry_free(cEntry) }
+        // Encode under a UTF-8 locale so libarchive stores non-ASCII names with a
+        // consistent UTF-8 charset regardless of the executor thread's ambient
+        // locale, keeping write/read round-trips correct.
+        try withUTF8Locale {
+            guard let cEntry = makeCEntry(from: draft) else {
+                throw ArchiveError(stage: .writeHeader(path: draft.path), code: ARCHIVE_FATAL, message: "archive_entry_new returned nil")
+            }
+            defer { archive_entry_free(cEntry) }
 
-        let rc = archive_write_header(handle, cEntry)
-        guard rc == ARCHIVE_OK || rc == ARCHIVE_WARN else {
-            throw ArchiveError(stage: .writeHeader(path: draft.path), code: rc, message: errorString(handle))
+            let rc = archive_write_header(handle, cEntry)
+            guard rc == ARCHIVE_OK || rc == ARCHIVE_WARN else {
+                throw ArchiveError(stage: .writeHeader(path: draft.path), code: rc, message: errorString(handle))
+            }
         }
     }
 

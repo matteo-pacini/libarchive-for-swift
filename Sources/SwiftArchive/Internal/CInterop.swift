@@ -1,5 +1,57 @@
 import Foundation
+import Darwin
 import libarchive
+
+// MARK: - UTF-8 locale + name decode
+
+/// Mirrors Darwin's `<xlocale.h>` `LC_ALL_MASK` (all six category bits). The
+/// macro itself is not imported into Swift, but its value is stable ABI.
+private let lcAllMask: Int32 = LC_COLLATE_MASK | LC_CTYPE_MASK | LC_MESSAGES_MASK
+    | LC_MONETARY_MASK | LC_NUMERIC_MASK | LC_TIME_MASK
+
+/// A process-lifetime UTF-8 `locale_t`, created once from the first available
+/// UTF-8 locale name. It is never mutated after creation, so it is safe to share
+/// across threads and install with `uselocale` (hence `nonisolated(unsafe)`).
+private nonisolated(unsafe) let utf8Locale: locale_t? = {
+    for name in ["en_US.UTF-8", "UTF-8", "C.UTF-8"] {
+        if let loc = name.withCString({ newlocale(lcAllMask, $0, nil) }) {
+            return loc
+        }
+    }
+    return nil
+}()
+
+/// Runs `body` with a UTF-8 locale installed on the calling thread, restoring the
+/// previous thread locale afterwards.
+///
+/// libarchive converts entry names between their stored form and the multibyte /
+/// UTF-8 representations using the *calling thread's* locale charset. Under a C /
+/// POSIX locale the `_utf8` getters fail and the plain getters mojibake non-ASCII
+/// names. `uselocale` is per-thread, so this scopes the UTF-8 charset to the
+/// reader/writer executor thread for the duration and never touches the process
+/// locale or any other thread.
+func withUTF8Locale<T>(_ body: () throws -> T) rethrows -> T {
+    guard let loc = utf8Locale else { return try body() }
+    let previous = uselocale(loc)
+    defer { if previous != nil { _ = uselocale(previous) } }
+    return try body()
+}
+
+/// Decodes a libarchive name, preferring the UTF-8 getter and falling back to the
+/// locale-charset getter only when the UTF-8 conversion is unavailable.
+///
+/// - Parameters:
+///   - utf8: The `_utf8` getter result (already UTF-8 when non-nil).
+///   - fallback: The plain getter result, evaluated only when `utf8` is nil.
+/// - Returns: The decoded string, or `nil` when both getters are nil.
+private func decodeName(
+    _ utf8: UnsafePointer<CChar>?,
+    _ fallback: @autoclosure () -> UnsafePointer<CChar>?
+) -> String? {
+    if let utf8 { return String(cString: utf8) }
+    if let fallback = fallback() { return String(cString: fallback) }
+    return nil
+}
 
 // MARK: - Error text
 
@@ -120,7 +172,7 @@ private func archiveTimeComponents(_ date: Date) -> (seconds: time_t, nanosecond
 /// - Parameter entry: A non-nil `archive_entry` from `archive_read_next_header`.
 /// - Returns: A fully copied, Sendable snapshot.
 func makeSnapshot(from entry: OpaquePointer?) -> ArchiveEntry {
-    let path = archive_entry_pathname(entry).map { String(cString: $0) } ?? ""
+    let path = decodeName(archive_entry_pathname_utf8(entry), archive_entry_pathname(entry)) ?? ""
 
     // Getter returns mode_t (UInt16 on Apple): widen to UInt32 for FileType.
     let typeWord = UInt32(archive_entry_filetype(entry))
@@ -139,14 +191,14 @@ func makeSnapshot(from entry: OpaquePointer?) -> ArchiveEntry {
         modificationDate = nil
     }
 
-    let symlinkTarget = archive_entry_symlink(entry).map { String(cString: $0) }
-    let hardlinkTarget = archive_entry_hardlink(entry).map { String(cString: $0) }
+    let symlinkTarget = decodeName(archive_entry_symlink_utf8(entry), archive_entry_symlink(entry))
+    let hardlinkTarget = decodeName(archive_entry_hardlink_utf8(entry), archive_entry_hardlink(entry))
     let isEncrypted = archive_entry_is_encrypted(entry) != 0
 
     let userID = archive_entry_uid_is_set(entry) != 0 ? Int64(archive_entry_uid(entry)) : nil
     let groupID = archive_entry_gid_is_set(entry) != 0 ? Int64(archive_entry_gid(entry)) : nil
-    let userName = archive_entry_uname(entry).map { String(cString: $0) }
-    let groupName = archive_entry_gname(entry).map { String(cString: $0) }
+    let userName = decodeName(archive_entry_uname_utf8(entry), archive_entry_uname(entry))
+    let groupName = decodeName(archive_entry_gname_utf8(entry), archive_entry_gname(entry))
 
     let accessDate: Date?
     if archive_entry_atime_is_set(entry) != 0 {
@@ -264,12 +316,12 @@ func makeDraft(from entry: OpaquePointer, path: String, bytes: [UInt8]) -> Entry
     let statusChangeDate = date(archive_entry_ctime_is_set(entry), archive_entry_ctime(entry), archive_entry_ctime_nsec(entry))
     let creationDate = date(archive_entry_birthtime_is_set(entry), archive_entry_birthtime(entry), archive_entry_birthtime_nsec(entry))
 
-    let symlinkTarget = archive_entry_symlink(entry).map { String(cString: $0) }
-    let hardlinkTarget = archive_entry_hardlink(entry).map { String(cString: $0) }
+    let symlinkTarget = decodeName(archive_entry_symlink_utf8(entry), archive_entry_symlink(entry))
+    let hardlinkTarget = decodeName(archive_entry_hardlink_utf8(entry), archive_entry_hardlink(entry))
     let userID = archive_entry_uid_is_set(entry) != 0 ? Int64(archive_entry_uid(entry)) : nil
     let groupID = archive_entry_gid_is_set(entry) != 0 ? Int64(archive_entry_gid(entry)) : nil
-    let userName = archive_entry_uname(entry).map { String(cString: $0) }
-    let groupName = archive_entry_gname(entry).map { String(cString: $0) }
+    let userName = decodeName(archive_entry_uname_utf8(entry), archive_entry_uname(entry))
+    let groupName = decodeName(archive_entry_gname_utf8(entry), archive_entry_gname(entry))
     let extendedAttributes = readExtendedAttributes(from: entry)
 
     var macMetadata: [UInt8]?
